@@ -1,0 +1,732 @@
+model Socials_2
+
+/* DeAnna-Shanae Beadle
+Jonathan Tracey
+Ashley Reid
+
+*/
+
+/* ********** ENUMERATIONS */
+enum DayOfWeek {Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday}
+
+-- ----------------------------------------------------------------------
+-- DATATYPES
+-- Classes to be used as datatypes, USE does not support
+-- creating datatype classes
+-- ----------------------------------------------------------------------
+class Date -- <<datatype>> not supported in USE
+attributes
+    day: Integer init: 1
+    month: Integer init:1
+    year: Integer init: 1900
+
+operations
+	initialise(d: Integer, m: Integer, y: Integer)
+	begin
+		self.day := d;
+		self.month := m;
+		self.year := y;
+	end
+
+	getDay(): Integer = day
+
+	getMonth(): Integer = month
+
+	getYear(): Integer = year
+
+	getDayOfWeek(): Day = dayOfDate
+
+	equals(d: Date): Boolean =
+        if (day = d.day and month = d.month and year = d.year )
+        then true
+        else false
+        endif
+    pre: dfs.isValid(day, month, year) /* alternately,
+                                            dfs.dates->includes(self)
+                                        because all dfs.dates are valid and all dates are in dfs.dates */
+    pre: dfs.isValid(d.day, d.month, d.year)
+    post: day=day@pre and month=month@pre and year=year@pre
+    post: d.day=d.day@pre and d.month=d.month@pre and d.year=d.year@pre
+
+    isBefore(d: Date): Boolean =
+        not equals(d) and
+            if year < d.year
+            then true
+            else
+                if year = d.year and month < d.month
+                then true
+                else
+                    if year = d.year and month = d.month and day < d.day
+                    then true
+                    else false
+                    endif
+                endif
+            endif
+    pre: dfs.isValid(day, month, year)
+    pre: dfs.isValid(d.day, d.month, d.year)
+    post: day=day@pre and month=month@pre and year=year@pre
+    post: d.day=d.day@pre and d.month=d.month@pre and d.year=d.year@pre
+
+    isAfter(d: Date): Boolean = not isBefore(d) and not equals(d)
+    pre: dfs.isValid(day, month, year)
+    pre: dfs.isValid(d.day, d.month, d.year)
+    post: day=day@pre and month=month@pre and year=year@pre
+    post: d.day=d.day@pre and d.month=d.month@pre and d.year=d.year@pre
+
+	/*
+	Returns number of days between two dates
+	Source: https://www.geeksforgeeks.org/find-number-of-days-between-two-given-dates/
+	last accessed: July 2023
+    Let the given two dates be "1-Feb-2000" and "1-Feb-2004"
+		dt1 = {1, 2, 2000}; dt2 = {1, 2, 2004};
+	Count number of days before dt1. Let this count be n1. Every leap year adds one extra day (29 Feb) to total days.
+		n1 = 2000*365 + 31 + 1 + Number of leap years
+	Count of leap years for a date 'd/m/y' can be calculated using the following formula:
+        = floor(y/4) - floor(y/100) + floor(y/400) if m > 2
+        = floor((y-1)/4) - floor((y-1)/100) + floor((y-1)/400) if m <= 2
+	All above divisions must be done using integer arithmetic so that the remainder is ignored.
+	For 01/01/2000, leap year count is 1999/4 - 1999/100 + 1999/400 which is 499 - 19 + 4 = 484
+	Therefore n1 is 2000*365 + 31 + 1 + 484
+	Similarly, the count number of days before dt2. Let this the count be n2.
+	Finally, return the interval between dt1 and dt2 as n2-n1
+	*/
+	interval(d: Date): Integer
+	begin
+		declare j: Integer, k: Integer;
+
+		if self.month > 2
+		then j := (self.year/4).floor() - (self.year/100).floor() + (self.year/400).floor();
+		else j := ((self.year-1)/4).floor() - ((self.year-1)/100).floor() + ((self.year-1)/400).floor();
+		end;
+
+		if d.month > 2
+		then k := (d.year/4).floor() - (d.year/100).floor() + (d.year/400).floor();
+		else k := ((d.year-1)/4).floor() - ((d.year-1)/100).floor() + ((d.year-1)/400).floor();
+		end;
+
+		result := (d.year*365 + 31 + 1 + k) - (self.year*365 + 31 + 1 + j);
+	end
+    pre: dfs.isValid(day, month, year)
+    pre: dfs.isValid(d.day, d.month, d.year)
+    pre: not isAfter(d)
+    post: day=day@pre and month=month@pre and year=year@pre
+    post: d.day=d.day@pre and d.month=d.month@pre and d.year=d.year@pre
+    post: result >= 0
+end
+
+class DateFactory
+operations
+
+	initialise()
+	begin
+		for i in self.dates do
+			destroy i;
+		end;
+		destroy self.dayFactory;
+		insert (self, new DayFactory) into DateFDayF;
+		self.dayFactory.initialise();
+	end
+	post: dates->size() = 0
+	post: Date.allInstances->size() = 0
+	post: dayFactory.containsAllDays() and dayFactory.containsUniqueDays()
+
+	getDate(d: Integer, m: Integer, y: Integer): Date
+	begin
+		declare nd: Date, dts: OrderedSet(Date), dts2:OrderedSet(Date);
+
+		if self.dates->exists(dt | dt.day = d and dt.month = m and dt.year = y)
+		then
+			-- even if there was an assumption of uniqueness of Dates,
+			-- any(true) is still needed to ensure the the result is not a collection
+			nd := self.dates->select(dt | dt.day = d and dt.month = m and dt.year = y)->any(true)
+		else
+			nd := new Date();
+			nd.day := d;
+			nd.month := m;
+			nd.year := y;
+
+			insert (nd, self.dayFactory.getDayForDate(nd)) into DayForDate;
+
+			if self.dates->size() > 0
+			then
+				dts := self.dates->select( dt | dt.isAfter(nd));
+				if dts->size() > 0
+				then dts2 := self.dates->insertAt(self.dates->indexOf(dts->first()), nd);
+				else dts2:= self.dates->append(nd);
+				end;
+				self.initialise();
+				for i in dts2 do insert (self, i) into Dates; end;
+			else insert (self, nd) into Dates;
+			end;
+		end;
+		result := nd;
+	end
+	pre: isValid(d, m, y)
+	pre: dayFactory.containsAllDays() and dayFactory.containsUniqueDays()
+
+	post:
+		if dates@pre->exists(dt | dt.day = d and dt.month = m and dt.year = y)
+	    then result.oclIsNew() = false
+	    else result.oclIsNew() = true
+	    endif
+
+	post: result.day = d and result.month = m and result.year = y
+
+	post: result.oclIsNew() = true implies result.dayOfDate->size() = 1
+
+	post properlyOrdered:
+		let i =
+			dates->indexOf(result)
+		in
+		 dates->size() > 1 implies
+		    (result.oclIsNew() = true implies (
+		        (i > 1 implies not dates->at(i-1).isAfter(result)) and
+		            (i < dates->size() implies  not dates->at(i+1).isBefore(result))
+		        )
+		    )
+
+	makeValid()
+	begin
+		for d in self.dates do
+			if self.isValid(d.day, d.month, d.year) = false
+			then destroy d;
+			end; -- if
+		end; -- for
+	end
+	pre: dates->exists(d | not isValid(d.day, d.month, d.year))
+	post: dates->forAll(d | isValid(d.day, d.month, d.year))
+
+	getDayForDate(d: Date): Day = dayFactory.getDayForDate(d)
+	pre: dayFactory.containsAllDays() and dayFactory.containsUniqueDays()
+
+	isLeapYear(y: Integer): Boolean =
+                if (y.mod(400)=0 or (y.mod(100)>0 and y.mod(4)=0))
+                then true
+                else false
+             endif
+
+    isValid(day: Integer, month: Integer, year: Integer): Boolean =
+        let
+            d = day, m = month, y = year
+        in
+            d >= 1 and d <= 31 and
+            m >= 1 and m <= 12 and
+            y >= 1900 and
+            (Set{4, 6, 9, 11}->includes(m) implies d < 31) and
+            ((m = 2 and isLeapYear(year)) implies d <= 29) and
+            ((m = 2 and not isLeapYear(year)) implies d <= 28)
+
+statemachines
+    psm FactoryStates
+        states
+            start: initial
+            empty  [dates->size() = 0 and dayFactory->size() >0 implies (
+                dayFactory.containsAllDays() and dayFactory.containsUniqueDays())]
+            validCollection [dates->forAll(
+                d | isValid(d.day, d.month, d.year)) and
+                    not dates->exists(d, e | d <> e and d.equals(e))]
+            invalidCollection[dates->exists(
+                d | not isValid(d.day, d.month, d.year)) or
+                    dates->exists(d, e | d <> e and d.equals(e))]
+        transitions
+            start->empty {create}
+            empty->empty{initialise()}
+            empty->validCollection {getDate()}
+            empty->invalidCollection {getDate()}
+
+            invalidCollection->empty {initialise()}
+            invalidCollection->empty {makeValid()}
+            invalidCollection->validCollection {makeValid()}
+
+            validCollection->validCollection {getDate()}
+			validCollection->empty {initialise()}
+			validCollection->invalidCollection {getDate()}
+    end
+end
+
+class Day
+attributes
+    day: DayOfWeek init: #Sunday
+    dayString: String derived = dayFactory.getDayString(day)
+operations
+	initialise(d: DayOfWeek)
+	begin
+		self.day :=  d;
+		self.dayString := self.dayFactory.getDayString(self.day)
+	end
+	pre: d.isDefined()
+	pre: day <> d
+	post: day = d
+	post: dayString = dayFactory.getDayString(day)
+
+	equals(d: Day): Boolean =
+		dayFactory.orderedDays()->indexOf(day) = dayFactory.orderedDays()->indexOf(d.day)
+		-- alternatively day = d.day
+
+	isAfter(d: Day): Boolean =
+		dayFactory.orderedDays()->indexOf(day) > dayFactory.orderedDays()->indexOf(d.day)
+	pre: dayFactory->size() = 1
+
+	isBefore(d: Day): Boolean = not (equals(d) or isAfter(d))
+	pre: dayFactory->size() = 1
+end
+
+class DayFactory
+attributes
+    uniqueDays: Integer derived = orderedDays()->size()
+
+operations
+    initialise() -- is an initialisation
+    begin
+        declare s: Day;
+        for t in orderedDays() do
+            if self.days->select(d | d.day = t)->size()=0
+            then
+                s := new Day();
+                s.day := t;
+                insert (self, s) into Days;
+            end -- end if, is SOIL version of if, not OCL
+        end; -- end for
+		self.removeDuplicates()
+    end
+    pre: true
+    post: containsAllDays() and containsUniqueDays()
+
+    getDay(d: DayOfWeek): Day = days->select(a | a.day = d )->any(true)
+    pre: d.isDefined
+    post: result.day = d
+
+    addDay(d: DayOfWeek)
+    begin
+
+    end
+    pre: not days->exists(x | x.day = d)
+    post: let
+            y  = days->select(x | x.day = d )
+        in
+            y->size() = 1 and
+            y->forAll( z | z.oclIsNew() = true)
+
+    removeDay(d: DayOfWeek)
+    begin
+
+    end
+    pre: days->select(x | x.day = d and x.dayFallsOn->size() = 0)->size() > 0
+    post: days->size() = days@pre->size() - days@pre->select(
+        x | x.day = d and x.dayFallsOn->size() = 0)->size()
+
+    removeDuplicates()
+    begin
+        for d in self.days do -- for0
+            for e in self.days->excluding(d) do -- for1
+                if d.day = e.day -- if1
+                then
+                    if e.dayFallsOn->size() > 0 -- if2
+                    then
+                        for x in e.dayFallsOn do -- for 2
+                            insert (x, d) into DayForDate;
+                        end; -- for2
+                    end; -- if2
+                destroy e;
+                end -- if1
+            end -- for1
+        end -- for0
+    end
+    pre: not containsUniqueDays()
+    post: containsUniqueDays()
+
+     --Source:https://artofmemory.com/blog/how-to-calculate-the-day-of-the-week/
+    getDayForDate(d: Date): Day =
+        let
+            C = d.year.toString().substring(1, 2).toInteger(),
+            y = d.year.toString().substring(3, 4).toInteger(),
+            yearCode = (y + (y/4)).floor().mod(7),
+            monthCode = '033614625035'.at(d.month).toInteger(),
+            centuryCode = '4206420'.at(C.mod(16)).toInteger(),
+            leapYearCode =
+                if d.dfs.isLeapYear(d.year) and Set{1,2}->includes(d.month)
+                then -1
+                else 0
+                endif,
+            W = (yearCode + monthCode + centuryCode + d.day + leapYearCode).floor().mod(7)
+        in
+            days->select( dy | dy.day = orderedDays()->at(W+1))->any(true)
+    pre: d.dfs.isValid(d.day, d.month, d.year)
+    pre: containsAllDays() and containsUniqueDays()
+
+    getDayString(d: DayOfWeek): String  =
+        let
+            S = orderedDays(),
+            T = orderedDayStrings()
+        in
+            T->at(S->indexOf(d))
+	pre: d.isDefined
+
+    orderedDays(): OrderedSet(DayOfWeek) =
+        OrderedSet {#Sunday, #Monday, #Tuesday, #Wednesday, #Thursday, #Friday, #Saturday}
+
+    orderedDayStrings(): OrderedSet(String) =
+        OrderedSet {'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'}
+
+    containsAllDays(): Boolean =
+        let
+            S = orderedDays(),
+            T = S->collect(
+                s | if days->exists(d | d.day = s) then 1 else 0 endif)->sum()
+        in
+            if T = uniqueDays then true else false endif
+
+    doesNotContainAllDays(): Boolean =
+        let
+            S = orderedDays(),
+            T = S->collect(
+                s | if days->exists(d | d.day = s)  then 1 else 0 endif )->sum()
+        in
+            if T >= 0  and T < uniqueDays then true else false endif
+
+    isEmpty(): Boolean = days->size() = 0
+
+    isNotEmpty(): Boolean = days->size() > 0
+
+    containsUniqueDays(): Boolean = days->forAll(d1, d2 | d1 <> d2 implies not d1.equals(d2))
+
+statemachines
+    psm FactoryStates
+        states
+            start: initial
+            uninitialised [isEmpty()]
+            initialised: final [containsAllDays() and containsUniqueDays()]
+            complete_with_duplicates[containsAllDays() and not containsUniqueDays()]
+            incomplete_no_duplicates [doesNotContainAllDays() and containsUniqueDays()]
+            incomplete_with_duplicates [doesNotContainAllDays() and not containsUniqueDays()]
+        transitions
+        start->uninitialised {create}
+        uninitialised->initialised{initialise()}
+
+    end -- for FactoryStates psm */
+end
+
+/* ********** Regular COMPOSITIONs in the model */
+composition DateFDayF
+between
+    DateFactory[1]
+    DayFactory[1]
+end
+
+/* ********** Regular AGGREGATIONs in the model */
+aggregation Days
+between
+    DayFactory[1]
+    Day[*] role days ordered
+end
+
+/* ********** Regular ASSOCIATIONs in the model */
+association Dates
+between
+	DateFactory [1] role dfs
+	Date[*] role dates ordered
+end
+
+association Today
+between
+	DateFactory [1] role dft
+	Date[0..1] role today
+end
+
+association DayForDate
+between
+    Date[*] role dayFallsOn
+    Day[0..1] role dayOfDate
+end
+
+/* ********** Additional CONSTRAINTs in the model */
+
+constraints
+context DateFactory
+	inv containsAllDates: Date.allInstances = dates->asSet()
+
+	inv allAreValid: dates->forAll(d | isValid(d.day, d.month, d.year))
+
+	inv noDuplicates:
+		dates->forAll( d, j | d <> j implies not d.equals(j))
+
+	inv properlyOrdered:
+		dates->forAll(d, k |
+			let
+				i = dates->indexOf(d), j = dates->indexOf(k)
+			in
+				i<j implies not d.isAfter(k)
+		)
+
+context DayFactory
+	inv isSingleton: DayFactory.allInstances->size() <= 1
+
+	inv allDaysLinkedToFactory: Day.allInstances = days
+
+    inv nbrOfUniqueDays: uniqueDays = 7
+
+    inv onlyOneInstanceOfEachDay: containsUniqueDays() and containsAllDays()
+
+/*
+
+Tester
+
+reset
+!df := new DateFactory
+!df.initialise()
+!df.getNew(1, 1, 1900)
+!df.getNew(1,1,1900)
+!for i in Sequence{1..10} do df.getNew(i.mod(31), i.mod(13), (i*1000).mod(3)) end
+!for k in Sequence{1..11} do df.getNew( Sequence{1..31}->any(true), Sequence{1..12}->any(true), Sequence{2000..2023}->any(true)) end
+*/
+
+/* End of specification for DateFactory */
+
+/* ********** Observer */
+enum Event{NEW, CHANGE, DELETE}
+
+abstract class Observable
+operations
+    notify(e: Event)
+    begin
+        for o in self.observers do
+            o.update(e, self);
+        end;
+    end
+    pre: observers->size() > 0
+
+    register(o: Observer)
+    begin
+        insert (self, o ) into Observers;
+    end
+    pre: observers->excludes(o)
+    post: observers = observers@pre->including(o)
+
+    unregister(o: Observer)
+    begin
+        delete (self, o) from Observers;
+    end
+    pre: observers->includes(o)
+    post: observers = observers@pre->excluding(o)
+end
+
+abstract class Observer
+operations
+    update(e: Event, o: Observable)
+    begin
+    end
+    pre: e.isDefined()
+    pre: observables->includes(o)
+end
+
+association Observers between
+    Observable [*] role observables
+    Observer[*] role observers
+end
+
+/* ********** Composite */
+abstract class Client end
+
+abstract class Component
+operations
+	toString(): String
+	print()
+end
+
+abstract class Part < Component
+operations
+	toString(): String
+end
+
+abstract class Whole < Component
+operations
+	add(p:Part)
+	remove(p:Part)
+	getChildren(): Set(Component) = parts
+	toString(): String
+end
+
+association Components
+between
+	Client [*] role clients
+	Component [*] role components derived = oclAsType(SNsCorp).parts
+end
+
+/* ********** * ********** * **********
+SNsCORP and Socials
+* *********** *********** ********** */
+
+/* ********** ENUMERATIONS */
+enum Type{Name, DOB, Gender, Post}
+enum PostType{Text, ExternalLink, InternalLink, MultiMedia}
+enum FeedAlgorithm {Popular, Oldest, Newest}
+enum PostAudience{Public, Private, Friends}
+enum RelationshipStatus{Initiated, Accepted, Declined, Rescinded, Enforced}
+enum FrenemyRestiction{All, Posts, Reactions}
+
+/* Abstract classes */
+abstract class Comparable
+operations
+	compareTo(c: Comparable): Integer
+end
+
+abstract class Content < Part end
+
+abstract class Reaction < Content, Whole
+attributes
+	count: Integer derived = parts->size()
+operations
+	toString(): String
+end
+
+abstract class Singleton
+operations
+	getInstance(): Singleton
+end
+
+/* extended concrete classes */
+
+class Data  < Content
+attributes
+	data: String
+operations
+	toString(): String
+end
+
+class Friend
+attributes
+	status: RelationshipStatus
+end
+
+class Frenimy < Friend
+attributes
+	kind: FrenemyRestiction
+end
+
+class OwnedElement < Part, Whole
+attributes
+	type: Type
+	shareable: Boolean init: true
+operations
+	toString(): String
+end
+
+class Post < Comparable, Content, OwnedElement
+attributes
+	postDate: Date
+	postType: PostType init: #Text
+	audience: PostAudience
+	popularityScore: Integer derived = 0 /*
+		contents->select(c | c.oclIsTypeOf(UpVote) = true)->size() -
+			contents->select(c | c.oclIsTypeOf(DownVote) = true)->size()*/
+operations
+	compareTo(c: Comparable): Integer
+	toString(): String
+constraints
+	inv: shareable = true
+end
+
+class ImmutablePost < Post
+operations
+	toString(): String
+end
+
+class Socials < Whole, Part, Observer, Observable
+attributes
+	feedSort: FeedAlgorithm
+operations
+	toString(): String
+end
+
+class User < Part, Whole, Observable, Observer
+attributes
+	feedSort: FeedAlgorithm
+operations
+	getPublicProfile(): Set(String) -- each string is of type  type, data
+	getFeed(): OrderedSet(Post)
+	toString(): String
+end
+
+class UpVote < Reaction end
+class DownVote < Reaction end
+
+class SNsCorp < Singleton, Client, Whole
+operations
+	getInstance(): Singleton /*=
+		if SNsCorp.allInstances()->size() = 0
+		then new SNsCorp()
+		else SNsCorp.allInstances()->any(true)
+		endif*/
+end
+
+/* ********** unextended concrete CLASSES */
+
+/* **********  ASSOCIATION Classes in the model */
+
+/* ********** COMPOSITIONs in the model, organised alphabetically */
+
+/* ********** AGGREGATIONs in the model, organised alphabetically */
+
+aggregation WholePart
+between
+	Whole [*] role whole -- union
+	Component [*] role parts  -- union
+end
+
+/* ********** Regular ASSOCIATIONs in the model */
+
+association ClientDateFactory
+between
+	Client[1]
+	DateFactory[1]
+end
+
+association ForSN
+between
+	Friend[*] role relation
+	Socials[1] role inSocials
+end
+
+association RelationInitiator
+between
+	User[1] role friendly
+	Friend[*] role relationI
+end
+
+association RelationTarget
+between
+	User[1] role friend
+	Friend[*] role relationT
+end
+
+association LinkedPost
+between
+	Post[0..1] role original
+	ImmutablePost[0..1] role immutableCopy
+end
+
+/* ********** CONSTRAINTs */
+constraints
+context User
+
+--A user cannot send themself a friendly
+ inv selfnofriendly : relationI -> forAll(a| a.friend<>self)
+
+
+ inv selfnotfriend : self.relationI -> excludes(self)
+--
+ inv  CannotBeApartOfYourOwnFriendsList: relationT->select(x|x.status = RelationshipStatus:: Accepted) -> forAll(z| z.friendly-> excludes(self))
+
+ inv CannotSendFriendRequestWithAPendingRequest:relationI.friend -> forAll( x | relationI -> collect( O | O.status = RelationshipStatus:: Initiated and O.friend = x) -> size() = 1)
+
+ inv CannotSendFriendRequestToFriends: relationI -> forAll(x | x.status = RelationshipStatus:: Initiated implies relationI -> select(c|c.status = RelationshipStatus::Accepted) -> forAll(z| z.friendly <> x.friendly))
+
+
+context Post
+
+--
+ inv positivescore: popularityScore >= 0
+
+ --
+ inv noshare: not shareable implies popularityScore > 0
+
