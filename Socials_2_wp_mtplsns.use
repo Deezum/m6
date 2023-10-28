@@ -709,11 +709,10 @@ end
 constraints
 context User
 
---A user cannot send themself a friendly
- inv selfnofriendly : relationI -> forAll(a| a.friend<>self)
+ inv selfnofriend : self.relationT -> excludes(self)
 
 
- inv selfnotfriend : self.relationI -> excludes(self)
+ inv selfnotfriendly : self.relationI -> excludes(self)
 --
  inv  CannotBeApartOfYourOwnFriendsList: relationT->select(x|x.status = RelationshipStatus:: Accepted) -> forAll(z| z.friendly-> excludes(self))
 
@@ -721,6 +720,8 @@ context User
 
  inv CannotSendFriendRequestToFriends: relationI -> forAll(x | x.status = RelationshipStatus:: Initiated implies relationI -> select(c|c.status = RelationshipStatus::Accepted) -> forAll(z| z.friendly <> x.friendly))
 
+ inv SymmetricFriendship: relationT->forAll(friend1, friend2 | friend1 <> friend2 and friend1.status = RelationshipStatus::Accepted implies 
+     friend2.status = RelationshipStatus::Accepted and relationT->exists(x | x.friend = friend1 and x.friendly = friend2))
 
 context Post
 
@@ -729,4 +730,8 @@ context Post
 
  --
  inv noshare: not shareable implies popularityScore > 0
+
+ inv noaudience: shareable = false implies audience = null
+
+
 
